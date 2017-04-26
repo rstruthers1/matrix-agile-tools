@@ -10,7 +10,7 @@ var User = require('./User')
 var DevWorklogOneDay = require('./models/DevWorklogOneDay')
 var WorklogDevEntry = require('./models/WorklogDevEntry')
 var EncryptDecrypt = require('./EncryptDecrypt')
-var encryptDecrypt = new EncryptDecrypt("Matrix4$", "aes256")
+var encryptDecrypt = new EncryptDecrypt(process.env.CRYPTO_PASSWORD, "aes256")
 
 function JiraTool() {
 
