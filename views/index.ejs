@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <% include ./partials/header.ejs %>
+
+    <title><%= title %></title>
+
+  </head>
+  <body>
+  <% include ./partials/nav.ejs %>
+  <div class="container">
+    <div class="row" style="padding-top: 30px;">
+      <% if (!login) {%>
+      <div class="col-md-6 col-sm-offset-2 col-md-offset-3" style="background-color: cornsilk; border-radius: 6px;">
+
+        <form class="cmxform form-inline form-horizontal" id="loginForm" action="/login" method="post"
+              style="padding-top: 30px">
+          <% if (message.length > 0) { %>
+          <div class="alert alert-danger"><%= message %></div>
+          <% } %>
+          <fieldset>
+            <legend>Please Login</legend>
+
+            <p>
+              <label for="username">Concur Username</label>
+              <input id="username" name="username" type="text" class="form-control input-sm" style="width: 300px;">
+            </p>
+
+            <p>
+              <label for="password">Concur Password</label>
+              <input id="password" name="password" type="password" class="form-control input-sm"
+                     style="width: 300px;"  >
+            </p>
+
+            <hr style="background-color: #532F8C">
+            <div class="row">
+
+              <div class="col-xs-12 col-md-6"><input type="submit" value="Sign in"
+                                                     class="btn btn-primary btn-block btn-lg"
+                                                     tabindex="7">
+              </div>
+
+            </div>
+
+          </fieldset>
+
+        </form>
+      </div>
+      <% } else {%>
+      <h1>Report Options</h1>
+      <ul>
+        <li><a href="/sprint-worklog-assignee">Hours Logged per Team Member for a Sprint</a></li>
+        <li><a href="/your-worklog">Your hours logged for a Sprint</a></li>
+        <li><a href="/your-daily-worklog">Your daily worklog for a sprint</a></li>
+      </ul>
+      <% }%>
+    </div>
+
+
+  </div>
+  </body>
+</html>

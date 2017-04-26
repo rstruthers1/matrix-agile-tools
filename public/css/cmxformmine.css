@@ -1,0 +1,37 @@
+form.cmxform legend {
+    font-size: 30px;
+    font-weight: 500;
+    margin-top: 20px;
+    margin-bottom: 10px;
+
+}
+
+input {
+    border: 1px solid black;
+    border-radius: 6px;
+    width: 300px;
+}
+
+.form-inline input {
+    width: 300px;
+}
+
+form.cmxform label.error, label.error {
+    color: red;
+    font-style: italic;
+    font-weight: 400;
+    margin-left: 155px;
+
+}
+
+body {
+    background-color: #d9ccee;
+    /*background-image: url("/images/58-usersthink-stock-image.jpg");*/
+    /*background-size:     cover;                      !* <------ *!*/
+    /*background-repeat:   no-repeat;*/
+    /*background-position: center center;              !* optional, center the image *!*/
+}
+
+
+
+

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+    <% include ./partials/header.ejs %>
+
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+
+    <title><%= title %></title>
+    <!--
+       td.maxwidth { border: 1px solid #000; padding: 5px; max-width: 200px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;}
+       -->
+
+    <style>
+        .table tbody tr > td.success {
+            background-color: #FAFAD2 !important;
+        }
+
+        td.maxwidth { border: 1px solid #000; padding: 5px; max-width: 250px;   }
+
+    </style>
+
+    <script>
+        $(document).ready(function() {
+            fetchSprints();
+
+            function fetchSprints() {
+                $("#sprint-select").prop('disabled', true)
+                var options = $("#sprint-select")
+                options.append(new Option("Fetching sprints..."))
+                $.ajax({
+                    url: "/sprint/board/1197"
+                }).then(function (data) {
+                    if (data && data.sprints) {
+                        $("#sprint-select").empty()
+                        var options = $("#sprint-select");
+                        options.append(new Option("Make a selection", "0"))
+                        $.each(data.sprints, function () {
+                            options.append(new Option(this.name, this.id + ":" + this.startDate));
+                        })
+                        $("#sprint-select").prop('disabled', false)
+                    }
+                });
+            }
+
+            $('#sprint-select').change(function() {
+                if ($(this).val() != "0") {
+                    var val = $(this).val();
+                    var firstColonIndex = val.indexOf(":");
+                    var sprintId = "0";
+                    var sprintStart = "";
+                    if (firstColonIndex >= 0) {
+                        sprintId = val.substr(0, firstColonIndex);
+                        sprintStart = val.substring(firstColonIndex + 1);
+                    }
+
+                    if (sprintId != "0") {
+                        var sprintStartDateString = val.substr(firstColonIndex + 1);
+                        $("#result-area").empty().append('<img id="loading-image" src="images/ajax-loader.gif" alt="Loading..." ' +
+                                'style="display:block; margin:0 auto"/>');
+                        fetchSprintWorkLogs(sprintId, sprintStart, function(worklogs) {
+                            renderWorklogTable(worklogs)
+                        });
+                    }
+                }
+            });
+
+            function fetchSprintWorkLogs(sprintId, sprintStart, callback) {
+                $.ajax({
+                    url: "/sprint/" + sprintId + "/start/" + sprintStart + "/myworklog"
+                }).then(function (data) {
+                    if (data && data.worklogs) {
+                        callback(data.worklogs);
+                    }
+                });
+            }
+
+            function getTableRowCell(value, alignment, className) {
+                var cell = "<td"
+                if (alignment) {
+                    cell += " align='" + alignment + "'"
+                }
+                if (className) {
+                    cell += " class='" + className + "'"
+                }
+                cell += ">"
+                cell += value
+                cell += "</td>"
+                return cell
+            }
+
+            function formatWorklogDate(dateString) {
+                var date = new Date(dateString)
+                var month = date.getMonth() + 1
+                return (month<10?'0':'') + month + "-" + (date.getDate()<10?'0':'') + date.getDate() + "-" + date.getFullYear()
+            }
+
+            function formatWorklogTime(dateString) {
+                var date = new Date(dateString)
+                return (date.getHours()<10?'0':'') + date.getHours() + ":" + (date.getMinutes()<10?'0':'') + date.getMinutes()
+            }
+
+
+            function getWorklogTableRow(worklog) {
+
+                var tableRow = "<tr>";
+                //tableRow += getTableRowCell(worklog.username)
+                tableRow += getTableRowCell(formatWorklogDate(worklog.started),'center')
+                tableRow += getTableRowCell(formatWorklogTime(worklog.started), 'center')
+                var hours = worklog.seconds/3600
+                var formattedHours = parseFloat(Math.round(hours * 100) / 100).toFixed(2);
+                tableRow += getTableRowCell(formattedHours, 'right')
+                tableRow += getTableRowCell(worklog.jiraKey)
+                tableRow += getTableRowCell(worklog.summary, null, 'maxwidth')
+                tableRow += getTableRowCell(worklog.comment, null, 'maxwidth')
+                tableRow += "</tr>";
+                return tableRow;
+            }
+
+            function getTableRowHeaderCell(value) {
+                var cell = "<th style='background-color: black; color: white'>"
+                cell += value
+                cell += "</th>"
+                return cell
+            }
+
+            function getWorklogTableHeaderRow() {
+                var tableHeaderRow = "<thead class='thead-inverse'><tr>"
+                tableHeaderRow += getTableRowHeaderCell("Date")
+                tableHeaderRow += getTableRowHeaderCell("Time")
+                tableHeaderRow += getTableRowHeaderCell("Hours")
+                tableHeaderRow += getTableRowHeaderCell("JIRA Key")
+                tableHeaderRow += getTableRowHeaderCell("Summary")
+                tableHeaderRow += getTableRowHeaderCell("Comment")
+                tableHeaderRow += "</tr></thead>"
+                return tableHeaderRow
+            }
+
+            function getTotalWorkRow(totalHours) {
+                var formattedHours = parseFloat(Math.round(totalHours * 100) / 100).toFixed(2);
+                var totalRow = "<tr>"
+                totalRow += "<td colspan='2' align='right' style='font-weight: bold'>Total Hours</td>"
+                totalRow += getTableRowCell(formattedHours, 'right')
+                totalRow += "<td colspan='3'></td>"
+                totalRow += "</tr>"
+                return totalRow
+            }
+
+            function renderWorklogTable(worklogs) {
+                var tableHtml = "<table class='table table-bordered table-striped' style='background-color: darkseagreen'>";
+
+                tableHtml += getWorklogTableHeaderRow();
+                tableHtml += "<tbody>"
+                var totalHours = 0;
+                for (var i = 0; i < worklogs.length; i++) {
+                    var worklog = worklogs[i];
+                    totalHours += worklog.seconds / 3600;
+                    tableHtml += getWorklogTableRow(worklog);
+                }
+                tableHtml += getTotalWorkRow(totalHours)
+                tableHtml += "</tbody></table>";
+                $("#result-area").empty().append(tableHtml)
+            }
+        })
+    </script>
+</head>
+<body>
+<% include ./partials/nav.ejs %>
+<div class="container">
+    <div class="row" style="padding-top: 30px;">
+        <h1>Your hours logged for a Sprint</h1>
+
+        Select a sprint:
+        <form>
+            <select id="sprint-select">
+
+            </select>
+        </form>
+        <div>
+            <div id="result-area" style="width: 100%; height: 500px; float: left; padding-top: 20px;"></div>
+        </div>
+    </div>
+
+
+</div>
+</body>
+</html>

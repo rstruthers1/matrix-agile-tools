@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+  <head>
+
+    <% include ./partials/header.ejs %>
+
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+
+    <title><%= title %></title>
+
+    <script>
+      $(document).ready(function(){
+        fetchSprints();
+
+        google.charts.load('current', {'packages':['line']});
+
+        function fetchSprints() {
+          $("#sprint-select").prop('disabled', true)
+          var options = $("#sprint-select")
+          options.append(new Option("Fetching sprints..."))
+          $.ajax({
+            url: "/sprint/board/1197"
+          }).then(function (data) {
+
+            if (data && data.sprints) {
+              $("#sprint-select").empty()
+              var options = $("#sprint-select");
+              options.append(new Option("Make a selection", "0"))
+              $.each(data.sprints, function() {
+                options.append(new Option(this.name, this.id + ":" + this.startDate));
+              })
+              $("#sprint-select").prop('disabled', false)
+            }
+          });
+        }
+
+        $('#sprint-select').change(function() {
+          if ($(this).val() != "0") {
+            var val = $(this).val();
+            var firstColonIndex = val.indexOf(":");
+            var sprintId = "0";
+            if (firstColonIndex >= 0) {
+              sprintId = val.substr(0, firstColonIndex);
+            }
+            if (sprintId != "0") {
+              var sprintStartDateString = val.substr(firstColonIndex + 1);
+              $("#result-area").empty().append('<img id="loading-image" src="images/ajax-loader.gif" alt="Loading..." ' +
+                      'style="display:block; margin:0 auto"/>');
+                fetchSprintWorkLogs(sprintId, function(worklogs) {
+                drawChart(new Date(sprintStartDateString), worklogs);
+              });
+            }
+          }
+        });
+
+        function nextLetter(s){
+          return s.replace(/([a-zA-Z])[^a-zA-Z]*$/, function(a){
+            var c= a.charCodeAt(0);
+            switch(c){
+              case 90: return 'A';
+              case 122: return 'a';
+              default: return String.fromCharCode(++c);
+            }
+          });
+        }
+
+        function drawChart(sprintStartDate, worklogs) {
+          devs = getUniqueDevs(worklogs)
+
+          var data = new google.visualization.DataTable();
+          data.addColumn('string', 'Day');
+
+          var currentDevLetter = 'a'
+          var devAliases = []
+          for (var i = 0; i < devs.length; i++) {
+            devAliases[i] = "dev " + currentDevLetter
+            data.addColumn('number', devAliases[i]);
+            currentDevLetter = nextLetter(currentDevLetter)
+          }
+
+          var rowData = [];
+
+          for (i = 0; i <= 13; i++) {
+            var thisDate = new Date(sprintStartDate);
+            thisDate.setDate(thisDate.getDate() + i);
+            var row = [thisDate.toDateString()];
+            for (j = 0; j < devs.length; j++) {
+              row.push(getCumulativeHours(worklogs, devs[j], thisDate, sprintStartDate));
+            }
+            rowData.push(row);
+          }
+
+          data.addRows(rowData);
+
+          var options = {
+            chart: {
+              title: 'Cumulative Hours Logged in Sprint'
+            },
+            axes: {
+              x: {
+                0: {side: 'top'}
+              }
+            }
+          };
+
+          var chart = new google.charts.Line(document.getElementById('result-area'));
+
+          chart.draw(data, options);
+        }
+
+        function getCumulativeHours(worklogs, dev, endDate, sprintStartDate) {
+          var cumulativeHours = 0;
+          for (var i = 0; i < worklogs.length; i++) {
+              var worklog = worklogs[i]
+              if (dev === worklog.username) {
+                  var worklogDate = new Date(worklog.date);
+                  if (worklogDate <= endDate && worklogDate >= sprintStartDate) {
+                    cumulativeHours += worklog.seconds/3600;
+                  }
+              }
+
+          }
+          return cumulativeHours;
+        }
+
+        function getUniqueDevs(worklogs) {
+          var devs = [];
+          for (var i = 0; i < worklogs.length; i++) {
+            var worklog = worklogs[i]
+            if (devs.indexOf(worklog.username) < 0) {
+              devs.push(worklog.username)
+            }
+          }
+          return devs;
+        }
+
+        function fetchSprintWorkLogs(sprintId, callback) {
+          $.ajax({
+            url: "/sprint/" + sprintId + "/devdayworklog"
+          }).then(function (data) {
+            if (data && data.worklogs) {
+              callback(data.worklogs);
+            }
+
+
+          });
+        }
+
+
+      });
+
+    </script>
+  </head>
+  <body>
+  <% include ./partials/nav.ejs %>
+  <div class="container">
+    <div class="row" style="padding-top: 30px;">
+      <h1>Hours Logged per Team Member for a Sprint</h1>
+
+      Select a sprint:
+      <form>
+        <select id="sprint-select">
+
+        </select>
+      </form>
+      <div>
+        <div id="result-area" style="width: 900px; height: 500px; float: left; padding-top: 20px;"></div>
+      </div>
+    </div>
+
+
+  </div>
+  </body>
+</html>
