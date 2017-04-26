@@ -21,7 +21,7 @@ const util = require('util')
 
 
 var app = express();
-var port = 8080;
+var port = process.env.PORT || 8080;
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -129,6 +129,7 @@ require('./routes/index.js')(app, passport);
 // });
 
 module.exports = app;
+
 
 app.listen(port, function() {
   console.log('Node app is running on port', port);
