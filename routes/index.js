@@ -61,6 +61,14 @@ module.exports = function (app, passport) {
     res.render('your-worklog', { title: 'Jira Reporting Tool'});
   });
 
+  app.get('/all-devs-worklog', function (req, res) {
+    var user = req.user;
+    if (user == null) {
+      return res.redirect('/');
+    }
+    res.render('all-devs-worklog', { title: 'Jira Reporting Tool'});
+  });
+
   app.get('/your-daily-worklog', function (req, res) {
     var user = req.user;
     if (user == null) {
@@ -130,6 +138,26 @@ module.exports = function (app, passport) {
     var sprintId = req.params.sprintId;
     var sprintStart = req.params.sprintStart;
     jiraTool.fetchSprintWorklogsForDev(req.user, sprintId, sprintStart, req.user.username, function(err, worklogs) {
+      if (err) {
+        console.log(error.toString());
+        res.statusCode = 500;
+        res.send({error_message: error.toString()});
+        return;
+      }
+      res.statusCode = 200;
+      var data = {};
+      data.worklogs = worklogs;
+      for (var i = 0; i < worklogs.length; i++) {
+        var worklog = worklogs[i]
+      }
+      res.send(data);
+    });
+  });
+
+  app.get("/sprint/:sprintId/start/:sprintStart/alldevsworklog", function(req, res, next) {
+    var sprintId = req.params.sprintId;
+    var sprintStart = req.params.sprintStart;
+    jiraTool.fetchSprintWorklogsForAllDevs(req.user, sprintId, sprintStart, function(err, worklogs) {
       if (err) {
         console.log(error.toString());
         res.statusCode = 500;

@@ -130,7 +130,7 @@ function extractWorklogsFromIssues(usernameToMatch, issues, sprintStart) {
                 continue;
             }
             var username = worklog.author.key;
-            if (username != usernameToMatch) {
+            if (usernameToMatch && username != usernameToMatch) {
                 continue;
             }
             var seconds = worklog.timeSpentSeconds;
@@ -150,6 +150,20 @@ JiraTool.prototype.fetchSprintWorklogsForDev = function(user, sprintId, sprintSt
         } else {
             var searchReply = JSON.parse(str);
             var worklogs = extractWorklogsFromIssues(username, searchReply.issues, new Date(sprintStart))
+            worklogs.sort(function(a, b) {return new Date(a.created) - new Date(b.created)})
+            callback(null, worklogs);
+        }
+    });
+}
+
+JiraTool.prototype.fetchSprintWorklogsForAllDevs = function(user, sprintId, sprintStart, callback) {
+    var endpoint = '/jira/rest/api/2/search?jql=sprint=' + sprintId + '&fields=worklog,summary'
+    makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
+        if (response.statusCode != 200) {
+            callback("error: " + str, null);
+        } else {
+            var searchReply = JSON.parse(str);
+            var worklogs = extractWorklogsFromIssues(null, searchReply.issues, new Date(sprintStart))
             worklogs.sort(function(a, b) {return new Date(a.created) - new Date(b.created)})
             callback(null, worklogs);
         }
