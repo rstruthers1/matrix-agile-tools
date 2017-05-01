@@ -3,14 +3,19 @@
  */
 var http = require('http');
 var request = require('request')
+var async = require("async");
+var fs = require('fs');
 var host = 'jira.concur.com'
 var JiraUsersDb = require('./JiraUsersDb')
 var jiraUsersDb = new JiraUsersDb()
 var User = require('./User')
 var DevWorklogOneDay = require('./models/DevWorklogOneDay')
 var WorklogDevEntry = require('./models/WorklogDevEntry')
+var Jira = require('./models/Jira')
 var EncryptDecrypt = require('./EncryptDecrypt')
 var encryptDecrypt = new EncryptDecrypt(process.env.CRYPTO_PASSWORD, "aes256")
+const querystring = require('querystring');
+
 
 function JiraTool() {
 
@@ -24,7 +29,9 @@ JiraTool.prototype.authenticate = function (username, password, callback) {
         if (response.statusCode != 200) {
             callback("Access Denied", null);
         } else {
-            var user = new User(username,  encryptedPassword);
+            var reply = JSON.parse(str)
+            var user = new User(username,  encryptedPassword, reply.name);
+            console.log("user: " + str)
             jiraUsersDb.addUser(user, function(err) {
                 callback(err, user);
 
@@ -170,6 +177,246 @@ JiraTool.prototype.fetchSprintWorklogsForAllDevs = function(user, sprintId, spri
     });
 }
 
+JiraTool.prototype.fetchJira = function(user, jiraKey, callback) {
+    var endpoint = '/jira/rest/api/2/issue/' + jiraKey
+    makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
+        if (response.statusCode != 200) {
+            callback(str, null);
+        } else {
+            console.log(str)
+            var reply = JSON.parse(str);
+            callback(null, reply);
+        }
+    });
+}
+
+JiraTool.prototype.fetchSkeletonJiras = function(user, callback) {
+    var query = '(project = "EXP" OR project = "INV") AND summary~"Skeleton to clone"'
+    query = querystring.escape(query)
+    var endpoint = '/jira/rest/api/2/search?jql=' + query
+    console.log(">>>> endpoint: " + endpoint)
+
+    makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
+        if (response.statusCode != 200) {
+            callback(str, null);
+        } else {
+            console.log(str)
+            var reply = JSON.parse(str);
+            // console.log("Writing jiras to file: jiras.json")
+            // fs.writeFileSync("./output/jiras.json", str)
+            var jiras = []
+            var issues = reply.issues;
+            if (issues) {
+                console.log("there are issues")
+                for (var i = 0; i < issues.length; i++) {
+                    var issue = issues[i]
+                    var jira = new Jira(issue.key, issue.fields.summary)
+                    console.log(jira.key +  ", " + jira.summary)
+                    jiras.push(jira)
+                }
+            } else {
+                console.log("there are no issues")
+            }
+            jiras.sort(function(a, b) {
+                var summaryA = a.summary;
+                var summaryB = b.summary;
+                if (summaryA < summaryB) {
+                    return -1;
+                }
+                if (summaryA > summaryB) {
+                    return 1;
+                }
+
+                // names must be equal
+                return 0;
+            })
+            console.log(">>>> endpoint: " + endpoint)
+            callback(null, jiras);
+        }
+    });
+}
+
+function getNewJiraJson(jiraToClone, summary, jiraLabel, user) {
+    if (!summary) {
+        summary = jiraToClone.fields.summary
+    }
+    summary = summary.replace(' - Skeleton to clone', '')
+    var fields = jiraToClone.fields;
+
+    var newJiraJson= {
+        "fields": {
+            "project": {
+                "id": fields.project.id
+            },
+            "issuetype": {
+                "id": fields.issuetype.id
+            },
+            "assignee": {
+                "name": fields.assignee.name
+            },
+            "reporter": {
+                "name": user.name
+            },
+            "priority": {
+                "id": fields.priority.id
+            },
+            "fixVersions": fields.fixVersions,
+            "description": fields.description,
+            "components": fields.components,
+            "customfield_10310": {
+                "id": fields.customfield_10310.id
+            },
+            "customfield_10572": fields.customfield_10572,
+            "customfield_12301": fields.customfield_12301,
+            "summary": summary
+        }
+    }
+
+    if (jiraLabel) {
+        newJiraJson.fields.labels = [jiraLabel]
+    }
+
+    return newJiraJson;
+}
+
+function fetchSubtasks(jiraTool, user, jira, callback) {
+    var subtasks = []
+    // 1st para in async.each() is the array of items
+    async.each(jira.fields.subtasks,
+        // 2nd param is the function that each item is passed to
+        function(subtask, callback) {
+            jiraTool.fetchJira(user, subtask.key, function(err, fetchedSubtask) {
+                subtasks.push(fetchedSubtask)
+                // Async call is done, alert via callback
+                callback();
+            })
+        },
+        // 3rd param is the function to call when everything's done
+        function(err){
+            // All tasks are done now
+            console.log("All done!")
+            callback(err, subtasks)
+        }
+    );
+}
+
+function createJiraSubtasks(jiraTool, user, newJira, subtasks, callback) {
+    var newSubtasks = []
+    // 1st para in async.each() is the array of items
+    async.each(subtasks,
+        // 2nd param is the function that each item is passed to
+        function(subtask, callback) {
+            var subtaskNewJiraJson = getNewJiraJson(subtask, subtask.summary, null, user)
+
+            subtaskNewJiraJson.fields.parent = {
+                "id": newJira.id}
+
+            if (subtask.fields.timetracking) {
+                subtaskNewJiraJson.fields.timetracking = subtask.fields.timetracking;
+            }
+            var newSubtaskString = JSON.stringify(subtaskNewJiraJson)
+            // console.log("Writing new subtask to file: " + subtask.key + "-new.json")
+            // fs.writeFileSync('./output/' + subtask.key + "-new.json", newSubtaskString)
+
+
+            var endpoint = '/jira/rest/api/2/issue'
+            var body = JSON.stringify(subtaskNewJiraJson)
+            postJiraRestCall(user.username, user.password, endpoint, body, function (response, str) {
+                if (response.statusCode >= 299) {
+                    console.log(">>>> THERE WAS AN ERROR!")
+                    console.log("status code: " + response.statusCode)
+                    console.log(str)
+                    callback("error: " + str);
+                } else {
+                    console.log(">>>>> NEW JIRA reply")
+                    console.log(str)
+                    console.log(">>>>> End new JIRA reply")
+                    var reply = {};
+                    try {
+                        reply = JSON.parse(str);
+                        subtaskNewJiraJson.self = reply.self;
+                        subtaskNewJiraJson.key = reply.key;
+                        subtaskNewJiraJson.id = reply.id;
+                    } catch(exc) {
+                        console.log(exc)
+                    }
+                    newSubtasks.push(subtaskNewJiraJson)
+                    callback();
+                }
+            })
+        },
+        // 3rd param is the function to call when everything's done
+        function(err){
+            // All tasks are done now
+            console.log("All done creating new subtasks!")
+            callback(err, newSubtasks)
+        }
+    );
+}
+
+JiraTool.prototype.cloneJira = function(user, jiraCloneKey, summary, jiraLabel, callback) {
+    var jiraTool = this;
+    this.fetchJira(user, jiraCloneKey, function(err, jiraToClone){
+        if (err) {
+            callback(err, null)
+            return
+        }
+        var newJiraJson = getNewJiraJson(jiraToClone, summary, jiraLabel, user);
+        var s = JSON.stringify(newJiraJson)
+        // console.log("Writing new JIRA to file: " + "new-json.json")
+        // fs.writeFileSync('./output/' + "new-json.json", s)
+        var endpoint = '/jira/rest/api/2/issue'
+        var body = JSON.stringify(newJiraJson)
+        console.log(">>>>> body: " + body)
+        postJiraRestCall(user.username, user.password, endpoint, body, function (response, str) {
+            if (response.statusCode >= 299) {
+                console.log(">>>> THERE WAS AN ERROR!")
+                console.log("status code: " + response.statusCode)
+                console.log(str)
+                callback("error: " + JSON.stringify(jiraToClone), null);
+            } else {
+                console.log(">>>>> NEW JIRA reply")
+                console.log(str)
+                console.log(">>>>> End new JIRA reply")
+                var reply = {};
+                try {
+                     reply = JSON.parse(str);
+                     newJiraJson.self = reply.self;
+                     newJiraJson.key = reply.key;
+                     newJiraJson.id = reply.id;
+                     var newJiraJsonString = JSON.stringify(newJiraJson);
+                     // console.log("Writing new JIRA to file: " + newJiraJson.key)
+                     // fs.writeFileSync('./output/' + newJiraJson.key + ".json", newJiraJsonString)
+                } catch(exc) {
+                    console.log(exc)
+                }
+                if (jiraToClone.fields.subtasks) {
+                   fetchSubtasks(jiraTool, user, jiraToClone, function(err, subtasks){
+                       if (subtasks) {
+                           createJiraSubtasks(jiraTool, user, newJiraJson, subtasks, function(err, newSubtasks) {
+                               if (newSubtasks) {
+                                   for (var i = 0; i < newSubtasks.length; i++) {
+                                       var newSubtask = newSubtasks[i]
+                                       //var newSubtaskString = JSON.stringify(newSubtask)
+                                       // console.log("Writing new subtask to file: " + newSubtask.key)
+                                       // fs.writeFileSync('./output/' + newSubtask.key + ".json", newSubtaskString)
+                                   }
+                               }
+                               callback(err, newJiraJson)
+                           })
+                       } else {
+                           callback(err, newJiraJson)
+                       }
+                   });
+                } else {
+                    callback(null, newJiraJson)
+                }
+            }
+        });
+
+    })
+}
+
 
 function makeJiraRestCall(username, encryptedPassword, endpoint, passedInCallback) {
 
@@ -197,6 +444,55 @@ function makeJiraRestCall(username, encryptedPassword, endpoint, passedInCallbac
         });
     }
 
+
     http.request(options, callback).end();
+
+}
+
+function postJiraRestCall(username, encryptedPassword, endpoint, body, passedInCallback) {
+    console.log("Post JIRA Rest Call!!!")
+
+    // if (true) {
+    //     var response = {}
+    //     response.statusCode = 200;
+    //     passedInCallback(response, '{"id":"1843432","key":"EXP-15703","self":"https://jira.concur.com/jira/rest/api/2/issue/1843432"}');
+    //     return;
+    // }
+
+    var password = encryptDecrypt.decrypt(encryptedPassword)
+
+    var auth = 'Basic ' + new Buffer(username + ':' + password).toString('base64');
+    console.log(auth)
+    var headers = {'Authorization': auth,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Content-Length": body.length
+    };
+    var options = {
+        host: host,
+        path: endpoint,
+        headers: headers,
+        method: 'POST'
+    }
+
+
+    callback = function (response) {
+        var str = '';
+        //another chunk of data has been recieved, so append it to `str`
+        response.on('data', function (chunk) {
+            str += chunk;
+        });
+
+        //the whole response has been recieved, so we just print it out here
+        response.on('end', function () {
+            passedInCallback(response, str)
+        });
+    }
+
+    var postReq = http.request(options, callback);
+    console.log(">>>> writing body!: " + body)
+    postReq.write(body);
+    postReq.end();
+
 
 }

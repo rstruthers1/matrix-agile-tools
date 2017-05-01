@@ -30,9 +30,8 @@ function createDb() {
         // Create the User table
         db.run("CREATE TABLE user (" +
             "username TEXT PRIMARY KEY, " +
-            "firstname TEXT, " +
-            "lastname TEXT, " +
-            "password" +
+            "name TEXT, " +
+            "password TEXT" +
             ")");
 
     });
@@ -41,8 +40,8 @@ function createDb() {
 
 JiraUsersDb.prototype.addUser = function(user, callback) {
     var sql =
-        "INSERT or REPLACE INTO user (password, username) " +
-        "VALUES ( '" + user.password + "', '" + user.username + "')";
+        "INSERT or REPLACE INTO user (password, username, name) " +
+        "VALUES ( '" + user.password + "', '" + user.username + "', '" + user.name + "')";
     db.all(sql, function (err, rows) {
         callback(err);
     });
@@ -73,7 +72,7 @@ JiraUsersDb.prototype.fetchUserByUsername = function(username, callback) {
 }
 
 function userFromDbRow(row) {
-    return new User(row.username, row.password);
+    return new User(row.username, row.password, row.name);
 }
 
 module.exports = JiraUsersDb;

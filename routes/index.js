@@ -77,6 +77,66 @@ module.exports = function (app, passport) {
     res.render('your-daily-worklog', { title: 'Jira Reporting Tool'});
   });
 
+  app.get('/clone-jira', function (req, res) {
+    var user = req.user;
+    if (user == null) {
+      return res.redirect('/');
+    }
+    var message = '';
+    var cloneJiraMessage = req.flash('message');
+    if (cloneJiraMessage) {
+      message = cloneJiraMessage;
+    }
+    res.render('clone-jira', { title: 'Jira Reporting Tool', message: message, newJira:{}});
+  });
+
+  app.post('/clone-jira', function (req, res) {
+    var user = req.user;
+    if (user == null) {
+      return res.redirect('/');
+    }
+    var message = '';
+    var cloneJiraMessage = req.flash('message');
+    if (cloneJiraMessage) {
+      message = cloneJiraMessage;
+    }
+    var jiraKey = req.body.jiraKey
+    if (!jiraKey) {
+      res.render('clone-jira', {title: 'Jira Reporting Tool', message: "You must enter a JIRA key"});
+      return;
+    }
+    var summary = req.body.summary
+    var jiraLabel = req.body.jiraLabel
+    setTimeout(function() {
+      jiraTool.cloneJira(user, jiraKey, summary, jiraLabel, function(err, newJira) {
+        if (err) {
+          message = err;
+          try {
+            var errObject = JSON.parse(err);
+            if (errObject.errorMessages && errObject.errorMessages.length > 0) {
+              message = "";
+              for (var i = 0; i < errObject.errorMessages.length; i++) {
+                message += errObject.errorMessages[i];
+                if (i < errObject.errorMessages.length - 1) {
+                  message += ", "
+                }
+              }
+            }
+          } catch(ex) {
+
+          }
+          res.render('clone-jira', { title: 'Jira Reporting Tool', message: message, newJira:{}});
+        } else {
+          console.log(">>>>>> new jira: " + newJira)
+
+          res.render('clone-jira', {title: 'Jira Reporting Tool', message: null, newJira: newJira});
+        }
+
+      })
+    }, 10000)
+
+  });
+
   app.get("/sprint/board/:boardId", function(req, res, next) {
     var boardId = req.params.boardId;
     jiraTool.fetchSprints(req.user, boardId, function(err, sprints) {
@@ -89,6 +149,23 @@ module.exports = function (app, passport) {
       res.statusCode = 200;
       var data = {};
       data.sprints = sprints;
+      res.send(data);
+    });
+  });
+
+  app.get("/jira/skeleton", function(req, res, next) {
+
+    jiraTool.fetchSkeletonJiras(req.user, function(err, jiras) {
+      if (err) {
+        console.log(err.toString());
+        res.statusCode = 500;
+        res.send({error_message: err.toString()});
+        return;
+      }
+      res.statusCode = 200;
+      var data = {};
+      data.jiras = jiras;
+
       res.send(data);
     });
   });
@@ -173,4 +250,24 @@ module.exports = function (app, passport) {
       res.send(data);
     });
   });
+
+  app.get("/jira/:key", function(req, res, next) {
+    var jiraKey = req.params.key;
+
+    jiraTool.fetchJira(req.user, jiraKey, function(err, jira) {
+      if (err) {
+        console.log(err.toString());
+        res.statusCode = 500;
+        res.send({error_message: err.toString()});
+        return;
+      }
+      res.statusCode = 200;
+      var data = {};
+      data.jira = jira;
+
+      res.send(data);
+    });
+
+  });
+
 }

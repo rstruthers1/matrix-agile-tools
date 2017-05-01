@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <% include ./partials/header.ejs %>
+
+    <script src="https://cdn.jsdelivr.net/jquery.validation/1.15.1/jquery.validate.min.js"></script>
+
+
+    <title><%= title %></title>
+
+    <style>
+      #overlay {
+        visibility: hidden;
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width:100%;
+        height:100%;
+        text-align:center;
+        z-index: 1000;
+        background-color: rgba(204, 204, 204, 0.8);
+      }
+
+      #loading-image {
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        margin: auto; /* presto! */
+      }
+
+    </style>
+
+    <script>
+      $(document).ready(function() {
+
+        fetchSkeletonJiras();
+
+        $.validator.addMethod("valueNotEquals", function(value, element, arg){
+          return arg != value;
+        }, "Value must not equal arg.");
+
+        $("#cloneJiraForm").validate({
+          // Specify validation rules
+          rules: {
+            // The key name on the left side is the name attribute
+            // of an input field. Validation rules are defined
+            // on the right side
+            summary: "required",
+            jiraLabel: { valueNotEquals: "0" },
+            jiraKey: { valueNotEquals: "0" }
+
+          },
+          // Specify validation error messages
+          messages: {
+            summary: "Please enter a summary",
+            jiraLabel: { valueNotEquals: "Please select a JIRA label" },
+            jiraKey: { valueNotEquals: "Please select a JIRA to clone" }
+          },
+          // Make sure the form is submitted to the destination defined
+          // in the "action" attribute of the form when valid
+          submitHandler: function(form) {
+            $('#overlay').css('visibility', 'visible');
+            form.submit();
+          }
+        });
+
+
+
+
+        $('#jiraKey').change(function() {
+          if ($(this).val() != "0") {
+            console.log("val: " + $(this).val());
+            var t = $("select#jiraKey option").filter(":selected").text();
+            console.log("t: " + t)
+            var firstColonIndex = t.indexOf(":");
+            var jiraKey = "0";
+            var summary = "";
+            console.log("firstColonIndex: " + firstColonIndex)
+            if (firstColonIndex >= 0) {
+              jiraKey = t.substr(0, firstColonIndex);
+              summary = t.substring(firstColonIndex + 1);
+              summary = summary.trim(summary);
+              console.log("summary: " + summary)
+            }
+
+
+            $('#summary').val(summary)
+          }
+          });
+
+
+        function fetchSkeletonJiras() {
+          $("#jiraKey").prop('disabled', true)
+          var options = $("#jiraKey")
+          options.append(new Option("Fetching JIRAs..."))
+          $.ajax({
+            url: "/jira/skeleton"
+          }).then(function (data) {
+            if (data && data.jiras) {
+              $("#jiraKey").empty()
+              var options = $("#jiraKey");
+              options.append(new Option("Make a selection", "0"))
+              $.each(data.jiras, function () {
+                var length = 75;
+                var s = this.key + ": " + this.summary
+                var trimmedString = s.length > length ? s.substring(0, length - 3) + "..." : s;
+                options.append(new Option(trimmedString, this.key));
+              })
+              $("#jiraKey").prop('disabled', false)
+            }
+          });
+        }
+
+
+//        $('#cloneJiraForm').submit(function() {
+//
+//          $('#overlay').css('visibility', 'visible');
+//        });
+
+        $('#fetchJira').click(function() {
+          var jiraKey = $('#jiraKey').val();
+          fetchJira(jiraKey, function(err, jira) {
+            console.log("error: " + err + " jira: " + jira)
+            if (jira.fields) {
+              console.log("There are fields")
+            } else {
+              console.log("no fields")
+            }
+            $('#summary').val(jira.fields.summary)
+          })
+        })
+
+        $('button[type!=submit]').click(function(){
+          // code to cancel changes
+          return false;
+        });
+
+        function fetchJira(jiraKey, callback) {
+          $.ajax({
+            url: "/jira/" + jiraKey,
+
+          }).then(function (data) {
+            if (data && data.jira) {
+              console.log(data.jira)
+              callback(null, data.jira);
+            }
+          });
+
+        }
+      });
+
+    </script>
+
+  </head>
+  <body>
+  <% include ./partials/nav.ejs %>
+  <div class="container">
+    <div class="row" style="padding-top: 30px;">
+
+      <div class="col-md-6 col-sm-offset-2 col-md-offset-3" style="background-color: cornsilk; border-radius: 6px;">
+        <div id="overlay">
+          <p style="font-weight: bold; font-size: 14px;">Creating JIRA, please wait...</p>
+          <img id="loading-image" src="images/gears.gif" alt="Loading..."/>
+        </div>
+        <form class="cmxform form-inline form-horizontal" id="cloneJiraForm" action="/clone-jira" method="post"
+              style="padding-top: 30px">
+          <% if (message && message.length > 0) { %>
+          <div class="alert alert-danger"><%= message %></div>
+          <% } %>
+
+          <fieldset>
+            <legend>Clone a JIRA</legend>
+
+            <p>
+              <label for="jiraKey" style="width: 100px; font-size: 12px;">JIRA to Clone</label>
+              <select id="jiraKey" name="jiraKey" class="form-control input-sm">
+
+              </select>
+              <!--
+              <input id="jiraKey" name="jiraKey" type="text" class="form-control input-sm" style="width: 300px;">
+              -->
+              <!--
+              <button id="fetchJira" type="button" style="padding-left: 10px">Fetch...</button>
+              -->
+            </p>
+
+            <p>
+              <label for="summary" style="width: 100px; font-size: 12px;">Summary</label>
+              <input id="summary" name="summary" type="text" class="form-control input-sm" style="width: 380px;">
+            </p>
+
+            <p>
+              <label for="jiraLabel" style="width: 100px; font-size: 12px;">JIRA Label</label>
+              <select id="jiraLabel" name="jiraLabel" class="form-control input-sm" style="width: 380px;">
+                <option value="0">Select a label</option>
+                <%
+                var options = [ "wa-customersupport", "wa-feature", "wa-operations", "wa-infrastructure", "wa-testautomation"];
+                for ( var i = 0; i < options.length; i++ )
+                {
+
+                %><option value="<%=options[ i ] %>"><%=options[i] %></option><%
+                }
+                %>
+              </select>
+            </p>
+
+
+            <hr style="background-color: #532F8C">
+            <div class="row">
+
+              <div class="col-xs-12 col-md-6"><input type="submit" value="Clone"
+                                                     class="btn btn-primary btn-block btn-lg"
+                                                     tabindex="7">
+              </div>
+
+            </div>
+
+            <% if (typeof newJira != 'undefined' && newJira && newJira.fields && newJira.fields.summary) { %>
+            <div class="row">
+            <div class="alert col-xs-12 col-md-12">New JIRA created: <a href="https://jira.concur.com/jira/browse/<%= newJira.key %>" target="_blank"><%= newJira.key %>: <%= newJira.fields.summary%></a></div>
+              </div>
+            <% } %>
+
+          </fieldset>
+
+        </form>
+
+        </div>
+
+    </div>
+
+
+  </div>
+  </body>
+</html>

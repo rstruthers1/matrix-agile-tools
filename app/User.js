@@ -3,11 +3,12 @@
  */
 
 
-function User(username, password) {
+function User(username, password, name) {
 
     this.username = username;
     this.password = password;
     this.id = username;
+    this.name = name;
 }
 
 module.exports = User;
