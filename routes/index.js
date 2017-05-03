@@ -77,6 +77,15 @@ module.exports = function (app, passport) {
     res.render('your-daily-worklog', { title: 'Jira Reporting Tool'});
   });
 
+
+  app.get('/overhead-by-sprint', function (req, res) {
+    var user = req.user;
+    if (user == null) {
+      return res.redirect('/');
+    }
+    res.render('overhead-by-sprint', { title: 'Jira Reporting Tool'});
+  });
+
   app.get('/clone-jira', function (req, res) {
     var user = req.user;
     if (user == null) {
@@ -152,6 +161,60 @@ module.exports = function (app, passport) {
       res.send(data);
     });
   });
+
+  app.get("/sprint/board/:boardId/start/:startDateString/end/:endDateString", function(req, res, next) {
+    var boardId = req.params.boardId;
+    var startDateString = req.params.startDateString;
+    var endDateString = req.params.endDateString;
+
+    var startDate = new Date(startDateString)
+    var endDate = new Date(endDateString)
+
+    jiraTool.fetchSprintsInDateRange(req.user, boardId, startDate, endDate, function(err, sprints) {
+      if (err) {
+        console.log(error.toString());
+        res.statusCode = 500;
+        res.send({error_message: error.toString()});
+        return;
+      }
+      res.statusCode = 200;
+      var data = {};
+      data.sprints = sprints;
+      res.send(data);
+    });
+  });
+
+  app.get("/work/board/:boardId/start/:startDateString/end/:endDateString", function(req, res, next) {
+    var boardId = req.params.boardId;
+    var startDateString = req.params.startDateString;
+    var endDateString = req.params.endDateString;
+
+    var startDate = new Date(startDateString)
+    var endDate = new Date(endDateString)
+
+    jiraTool.fetchOverheadWorkInDateRangeForBoard(req.user, boardId, startDate, endDate, function(err, sprints) {
+      if (err) {
+        console.log(error.toString());
+        res.statusCode = 500;
+        res.send({error_message: error.toString()});
+        return;
+      }
+      res.statusCode = 200;
+      var data = {};
+      for (var j = 0; j < sprints.length; j++) {
+        var worklogs =  sprints[j].worklogDevEntries;
+        console.log(">>> sprint: " + sprints[j].name)
+        for (var i = 0; i < worklogs.length; i++) {
+          var worklog = worklogs[i]
+          console.log(worklog.username + ", " + worklog.jiraKey + ", " + worklog.summary + ", " + worklog.comment)
+        }
+      }
+      data.sprints = sprints;
+      res.send(data);
+    });
+  });
+
+
 
   app.get("/jira/skeleton", function(req, res, next) {
 

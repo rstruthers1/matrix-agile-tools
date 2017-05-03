@@ -15,6 +15,7 @@ var Jira = require('./models/Jira')
 var EncryptDecrypt = require('./EncryptDecrypt')
 var encryptDecrypt = new EncryptDecrypt(process.env.CRYPTO_PASSWORD, "aes256")
 const querystring = require('querystring');
+var Sprint = require("./models/Sprint")
 
 
 function JiraTool() {
@@ -84,14 +85,174 @@ JiraTool.prototype.fetchSprints = function(user, boardId, callback) {
     });
 }
 
+
+JiraTool.prototype.fetchSprintsInDateRange = function(user, boardId, startDate, endDate, callback) {
+    var endpoint = '/jira/rest/agile/1.0/board/' + boardId + '/sprint'
+    makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
+        if (response.statusCode != 200) {
+            callback("error: " + str, null);
+        } else {
+            // console.log("Dumping sprints to file")
+            // fs.writeFileSync("output/sprints.json", str);
+            var sprintReply = JSON.parse(str);
+            var sprints = [];
+            var allSprints = sprintReply.values;
+            if (allSprints != null) {
+                for (var i = 0; i < allSprints.length; i++) {
+                    var sprint = allSprints[i];
+                    if (sprint.state === 'future') {
+                        continue;
+                    }
+                    var sprintStartDate = new Date(sprint.startDate);
+
+                    if (sprintStartDate >= startDate && sprintStartDate <= endDate) {
+                        sprints.push(sprint);
+                    }
+                }
+                sprints.sort(function(a, b) {return new Date(a.startDate) - new Date(b.startDate)})
+            }
+            callback(null, sprints);
+        }
+    });
+}
+
+JiraTool.prototype.fetchSprintOverheadWorklogsForAllDevs = function(user, boardId, sprintId, sprintStart, callback) {
+    var jql = 'sprint=' + sprintId + ' AND issueFunction in subtasksOf(\'summary~"Matrix Overhead" AND project in (EXP, INV)\')'
+    var query = querystring.escape(jql)
+    console.log("fetchSprintOverheadWorklogsForAllDevs")
+    console.log("sprintId: " + sprintId)
+    console.log("sprintStart: " + sprintStart)
+
+    var endpoint = '/jira/rest/agile/1.0/board/' + boardId + '/sprint/' + sprintId + '/issue?jql=' + query + '&fields=worklog,summary'
+    makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
+        if (response.statusCode != 200) {
+            console.log(str)
+            callback("error: " + str, null);
+        } else {
+
+            console.log(str)
+            var searchReply = JSON.parse(str);
+            var worklogs = extractWorklogsFromIssues(null, searchReply.issues, new Date(sprintStart))
+            worklogs.sort(function(a, b) {return new Date(a.created) - new Date(b.created)})
+            callback(null, worklogs);
+        }
+    });
+}
+
+JiraTool.prototype.fetchOverheadWorkInDateRangeForBoard = function(user, boardId, startDate, endDate, callback) {
+    var jiraTool = this;
+    this.fetchSprintsInDateRange(user, boardId, startDate, endDate, function(err, sprints) {
+        if (err) {
+            callback(err, null);
+            return;
+        }
+        var sprintsWithWorklogs = []
+        if (!sprints) {
+            callback(null, sprintsWithWorklogs)
+            return;
+        }
+        async.each(sprints,
+            // 2nd param is the function that each item is passed to
+            function(sprint, callback) {
+
+                jiraTool.fetchSprintOverheadWorklogsForAllDevs(user, boardId, sprint.id, new Date(sprint.startDate), function(err, worklogs) {
+                    var aggOverheadWorklogs = []
+                    for (var i = 0; i < worklogs.length; i++) {
+                        var worklog = worklogs[i]
+                        var worklogSummary = worklog.summary
+                        var aggMatch = null;
+                        for (j = 0; j < aggOverheadWorklogs.length; j++) {
+                            var aggOverheadWorklog = aggOverheadWorklogs[j]
+                            if (aggOverheadWorklog.summary == worklogSummary) {
+                                aggMatch = aggOverheadWorklog
+                                break;
+                            }
+                        }
+                        if (aggMatch) {
+                            aggMatch.seconds += worklog.seconds;
+                        } else {
+                            var newAgg = new WorklogDevEntry("agg", null, worklog.summary, worklog.seconds, null, null, null)
+                            aggOverheadWorklogs.push(newAgg)
+                        }
+                    }
+                    aggOverheadWorklogs.sort(function(a,b) {return (a.summary > b.summary) ? 1 : ((b.summary > a.summary) ? -1 : 0);} );
+                    var sprintWithWorklogs = new Sprint(sprint.id, sprint.name, sprint.startDate, sprint.endDate, sprint.completeDate, aggOverheadWorklogs)
+                    sprintsWithWorklogs.push(sprintWithWorklogs)
+                    callback();
+                })
+            },
+            // 3rd param is the function to call when everything's done
+            function(err){
+                // All tasks are done now
+                console.log("All done!")
+                sprintsWithWorklogs.sort(function(a, b) {return new Date(a.startDate) - new Date(b.startDate)});
+                var uniqueSummaries = []
+                for (var i = 0; i < sprintsWithWorklogs.length; i++) {
+
+                    var sprint = sprintsWithWorklogs[i]
+                    for (var j = 0; j < sprint.worklogDevEntries.length; j++) {
+                        var worklog = sprint.worklogDevEntries[j];
+                        var matchSummary = null;
+                        for (var k = 0; k < uniqueSummaries.length; k++) {
+                            if (worklog.summary == uniqueSummaries[k]) {
+                                matchSummary = worklog.summary;
+                                break;
+                            }
+                        }
+                        if (!matchSummary) {
+                            uniqueSummaries.push(worklog.summary);
+                        }
+                    }
+                }
+                console.log("unique summaries")
+                for (var i = 0; i < uniqueSummaries.length; i++) {
+                    console.log(i + ": " + uniqueSummaries[i])
+                }
+
+                for (var i = 0; i < sprintsWithWorklogs.length; i++) {
+                    var sprint = sprintsWithWorklogs[i]
+                    var worklogs = sprint.worklogDevEntries;
+                    var newWorklogs = []
+
+                    for (j = 0; j < uniqueSummaries.length; j++) {
+
+                        var uniqueSummary = uniqueSummaries[j]
+                        var worklogMatch = null;
+                        for (var k = 0; k < worklogs.length; k++) {
+                            var worklog = worklogs[k]
+                            if (worklog.summary == uniqueSummary) {
+                                worklogMatch = worklog
+                                break;
+                            }
+                        }
+                        if (!worklogMatch) {
+                            var newWorklog = new WorklogDevEntry("agg", null, uniqueSummary, 0, null, null, null)
+                            newWorklogs.push(newWorklog)
+                        } else {
+                            newWorklogs.push(worklogMatch)
+                        }
+                    }
+                    sprint.worklogDevEntries = newWorklogs
+                }
+
+                callback(err, sprintsWithWorklogs)
+            }
+        );
+
+
+    })
+
+}
+
 JiraTool.prototype.fetchSprintWorklogs = function(user, sprintId, callback) {
     var endpoint = '/jira/rest/api/2/search?jql=sprint=' + sprintId + '&fields=worklog'
     makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
         if (response.statusCode != 200) {
             callback("error: " + str, null);
         } else {
+            // console.log("Writing jiras to file: jiras.json")
+            // fs.writeFileSync("./output/jiras.json", str)
             var searchReply = JSON.parse(str);
-
             var issues = searchReply.issues;
             var worklogs = [];
             if (issues) {
@@ -112,6 +273,8 @@ JiraTool.prototype.fetchSprintWorklogs = function(user, sprintId, callback) {
         }
     });
 }
+
+
 
 function extractWorklogsFromIssues(usernameToMatch, issues, sprintStart) {
     var worklogs = [];
@@ -362,7 +525,7 @@ JiraTool.prototype.cloneJira = function(user, jiraCloneKey, summary, jiraLabel, 
             return
         }
         var newJiraJson = getNewJiraJson(jiraToClone, summary, jiraLabel, user);
-        var s = JSON.stringify(newJiraJson)
+        // var s = JSON.stringify(newJiraJson)
         // console.log("Writing new JIRA to file: " + "new-json.json")
         // fs.writeFileSync('./output/' + "new-json.json", s)
         var endpoint = '/jira/rest/api/2/issue'
@@ -394,14 +557,14 @@ JiraTool.prototype.cloneJira = function(user, jiraCloneKey, summary, jiraLabel, 
                    fetchSubtasks(jiraTool, user, jiraToClone, function(err, subtasks){
                        if (subtasks) {
                            createJiraSubtasks(jiraTool, user, newJiraJson, subtasks, function(err, newSubtasks) {
-                               if (newSubtasks) {
-                                   for (var i = 0; i < newSubtasks.length; i++) {
-                                       var newSubtask = newSubtasks[i]
-                                       //var newSubtaskString = JSON.stringify(newSubtask)
-                                       // console.log("Writing new subtask to file: " + newSubtask.key)
-                                       // fs.writeFileSync('./output/' + newSubtask.key + ".json", newSubtaskString)
-                                   }
-                               }
+                               // if (newSubtasks) {
+                               //     for (var i = 0; i < newSubtasks.length; i++) {
+                               //         var newSubtask = newSubtasks[i]
+                               //         var newSubtaskString = JSON.stringify(newSubtask)
+                               //         console.log("Writing new subtask to file: " + newSubtask.key)
+                               //         fs.writeFileSync('./output/' + newSubtask.key + ".json", newSubtaskString)
+                               //     }
+                               // }
                                callback(err, newJiraJson)
                            })
                        } else {
