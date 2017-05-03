@@ -14,9 +14,12 @@
 
             function fetchSprintOverheadWorklogs() {
                console.log("fetching worklogs")
-
+                var now = new Date();
+                var endDateString = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
+                var url = "/work/board/1197/start/2017-04-01/end/" + endDateString
+                console.log("making call to url: " + url)
                 $.ajax({
-                    url: "/work/board/1197/start/2017-04-01/end/2017-05-30"
+                    url: url
                 }).then(function (data) {
                     if (data && data.sprints) {
 
