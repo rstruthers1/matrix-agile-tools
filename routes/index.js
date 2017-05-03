@@ -184,7 +184,7 @@ module.exports = function (app, passport) {
     });
   });
 
-  app.get("/work/board/:boardId/start/:startDateString/end/:endDateString", function(req, res, next) {
+  app.get("/work/overhead/board/:boardId/start/:startDateString/end/:endDateString", function(req, res, next) {
     var boardId = req.params.boardId;
     var startDateString = req.params.startDateString;
     var endDateString = req.params.endDateString;

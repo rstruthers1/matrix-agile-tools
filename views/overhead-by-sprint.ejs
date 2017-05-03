@@ -16,7 +16,7 @@
                console.log("fetching worklogs")
                 var now = new Date();
                 var endDateString = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
-                var url = "/work/board/1197/start/2017-04-01/end/" + endDateString
+                var url = "/work/overhead/board/1197/start/2017-04-01/end/" + endDateString
                 console.log("making call to url: " + url)
                 $.ajax({
                     url: url
@@ -41,78 +41,78 @@
                     return;
                 }
 
-            google.charts.load('current', {packages: ['corechart', 'bar']});
-            google.charts.setOnLoadCallback(drawAxisTickColors);
-            function drawAxisTickColors() {
-                var data = new google.visualization.DataTable();
+                google.charts.load('current', {packages: ['corechart', 'bar']});
+                google.charts.setOnLoadCallback(drawAxisTickColors);
+                function drawAxisTickColors() {
+                    var data = new google.visualization.DataTable();
 
-                var firstSprint = sprints[0]
-                data.addColumn('string', 'sprint');
-                var firstSprintWorklogs = firstSprint.worklogDevEntries;
-                for (var i = 0; i < firstSprintWorklogs.length; i++) {
-                    var worklog = firstSprintWorklogs[i]
-                    data.addColumn('number', worklog.summary)
-                }
-
-                var dataRows= []
-                for (var i = 0; i < sprints.length; i++) {
-                    var sprint = sprints[i]
-                    var sprintWorklogs = sprint.worklogDevEntries;
-                    var dataRow = []
-                    dataRow.push(sprint.name)
-                    for (var j = 0; j < sprintWorklogs.length; j++) {
-                        var worklog = sprintWorklogs[j]
-                        dataRow.push(worklog.seconds/3600)
+                    var firstSprint = sprints[0]
+                    data.addColumn('string', 'sprint');
+                    var firstSprintWorklogs = firstSprint.worklogDevEntries;
+                    for (var i = 0; i < firstSprintWorklogs.length; i++) {
+                        var worklog = firstSprintWorklogs[i]
+                        data.addColumn('number', worklog.summary)
                     }
-                    dataRows.push(dataRow)
-                }
 
-                data.addRows(dataRows)
-
-
-                var options = {
-                    title: 'Overhead Hours Logged per Sprint',
-                    focusTarget: 'category',
-                    hAxis: {
-                        title: 'Sprint',
-                        //format: 'h:mm a',
-                        viewWindow: {
-                            min: [7, 30, 0],
-                            max: [17, 30, 0]
-                        },
-                        textStyle: {
-                            fontSize: 14,
-                            color: '#053061',
-                            bold: true,
-                            italic: false
-                        },
-                        titleTextStyle: {
-                            fontSize: 18,
-                            color: '#053061',
-                            bold: true,
-                            italic: false
+                    var dataRows= []
+                    for (var i = 0; i < sprints.length; i++) {
+                        var sprint = sprints[i]
+                        var sprintWorklogs = sprint.worklogDevEntries;
+                        var dataRow = []
+                        dataRow.push(sprint.name)
+                        for (var j = 0; j < sprintWorklogs.length; j++) {
+                            var worklog = sprintWorklogs[j]
+                            dataRow.push(worklog.seconds/3600)
                         }
-                    },
-                    vAxis: {
-                        title: 'Hours',
-                        textStyle: {
-                            fontSize: 18,
-                            color: '#67001f',
-                            bold: false,
-                            italic: false
-                        },
-                        titleTextStyle: {
-                            fontSize: 18,
-                            color: '#67001f',
-                            bold: true,
-                            italic: false
-                        }
+                        dataRows.push(dataRow)
                     }
-                };
 
-                var chart = new google.visualization.ColumnChart(document.getElementById('result-area'));
-                chart.draw(data, options);
-            }
+                    data.addRows(dataRows)
+
+
+                    var options = {
+                        title: 'Overhead Hours Logged per Sprint',
+                        focusTarget: 'category',
+                        hAxis: {
+                            title: 'Sprint',
+                            //format: 'h:mm a',
+                            viewWindow: {
+                                min: [7, 30, 0],
+                                max: [17, 30, 0]
+                            },
+                            textStyle: {
+                                fontSize: 14,
+                                color: '#053061',
+                                bold: true,
+                                italic: false
+                            },
+                            titleTextStyle: {
+                                fontSize: 18,
+                                color: '#053061',
+                                bold: true,
+                                italic: false
+                            }
+                        },
+                        vAxis: {
+                            title: 'Hours',
+                            textStyle: {
+                                fontSize: 18,
+                                color: '#67001f',
+                                bold: false,
+                                italic: false
+                            },
+                            titleTextStyle: {
+                                fontSize: 18,
+                                color: '#67001f',
+                                bold: true,
+                                italic: false
+                            }
+                        }
+                    };
+
+                    var chart = new google.visualization.ColumnChart(document.getElementById('result-area'));
+                    chart.draw(data, options);
+                }
             }
         })
         </script>
