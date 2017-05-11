@@ -52,19 +52,24 @@ JiraTool.prototype.fetchBoards = function(user, callback) {
     });
 }
 
-
-JiraTool.prototype.fetchSprints = function(user, boardId, callback) {
+function fetchSprintsStartingAtIndex(user, boardId, startAt, callback) {
     var endpoint = '/jira/rest/agile/1.0/board/' + boardId + '/sprint'
+    if (startAt) {
+        endpoint += "?startAt=" + startAt
+    }
+    console.log("endpoint: " + endpoint)
     makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
         if (response.statusCode != 200) {
             callback("error: " + str, null);
         } else {
+
             var sprintReply = JSON.parse(str);
             var sprints = [];
             var allSprints = sprintReply.values;
             if (allSprints != null) {
                 for (var i = 0; i < allSprints.length; i++) {
                     var sprint = allSprints[i];
+                    console.log(sprint.name)
                     if (sprint.state === 'future') {
                         continue;
                     }
@@ -84,33 +89,53 @@ JiraTool.prototype.fetchSprints = function(user, boardId, callback) {
     });
 }
 
+JiraTool.prototype.fetchSprints = function(user, boardId, callback) {
+    var sprints = []
+    fetchSprintsStartingAtIndex(user, boardId, 0, function(err, sprintsFromRestCall) {
+        if (err) {
+            callback(err, null)
+            return;
+        }
+        for (var i = 0; i < sprintsFromRestCall.length; i++) {
+            sprints.push(sprintsFromRestCall[i])
+        }
+        fetchSprintsStartingAtIndex(user, boardId, 50, function(err, sprintsFromRestCall) {
+            if (err) {
+                callback(err, sprints)
+                return;
+            }
+            for (var i = 0; i < sprintsFromRestCall.length; i++) {
+                sprints.push(sprintsFromRestCall[i])
+            }
+            sprints.sort(function(a, b) {return new Date(b.startDate) - new Date(a.startDate)})
+            callback(null, sprints)
+        })
+    })
+}
+
 
 JiraTool.prototype.fetchSprintsInDateRange = function(user, boardId, startDate, endDate, callback) {
-    var endpoint = '/jira/rest/agile/1.0/board/' + boardId + '/sprint'
-    makeJiraRestCall(user.username, user.password, endpoint, function (response, str) {
-        if (response.statusCode != 200) {
-            callback("error: " + str, null);
-        } else {
-            var sprintReply = JSON.parse(str);
-            var sprints = [];
-            var allSprints = sprintReply.values;
-            if (allSprints != null) {
-                for (var i = 0; i < allSprints.length; i++) {
-                    var sprint = allSprints[i];
-                    if (sprint.state === 'future') {
-                        continue;
-                    }
-                    var sprintStartDate = new Date(sprint.startDate);
-
-                    if (sprintStartDate >= startDate && sprintStartDate <= endDate) {
-                        sprints.push(sprint);
-                    }
-                }
-                sprints.sort(function(a, b) {return new Date(a.startDate) - new Date(b.startDate)})
-            }
-            callback(null, sprints);
+    var jiraTool = this;
+    this.fetchSprints(user, boardId, function(err, allSprints) {
+        if (err) {
+            callback(err, null)
+            return;
         }
-    });
+        var sprints = []
+        if (allSprints) {
+            for (var i = 0; i < allSprints.length; i++) {
+                var sprint = allSprints[i];
+                var sprintStartDate = new Date(sprint.startDate);
+
+                if (sprintStartDate >= startDate && sprintStartDate <= endDate) {
+                    sprints.push(sprint);
+                }
+            }
+        }
+        callback(null, sprints)
+    })
+
+
 }
 
 JiraTool.prototype.fetchSprintOverheadWorklogsForAllDevs = function(user, boardId, sprintId, sprintStart, callback) {
@@ -622,7 +647,7 @@ function postJiraRestCall(username, encryptedPassword, endpoint, body, passedInC
     var password = encryptDecrypt.decrypt(encryptedPassword)
 
     var auth = 'Basic ' + new Buffer(username + ':' + password).toString('base64');
-    console.log(auth)
+
     var headers = {'Authorization': auth,
             "Content-Type": "application/json",
             "Accept": "application/json",
