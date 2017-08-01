@@ -74,7 +74,7 @@
           var devAliases = []
           for (var i = 0; i < devs.length; i++) {
             devAliases[i] = "dev " + currentDevLetter
-            data.addColumn('number', dev[i]);
+            data.addColumn('number', devs[i]);
             currentDevLetter = nextLetter(currentDevLetter)
           }
 
